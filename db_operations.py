@@ -1,7 +1,6 @@
 import mysql.connector
 from db_connection import get_connection
 
-
 def add_product(name: str, price: float, stock: int) -> str:
     """添加商品"""
     conn = get_connection()
@@ -14,10 +13,9 @@ def add_product(name: str, price: float, stock: int) -> str:
             (name, price, stock)
         )
         conn.commit()
-        product_id = cursor.lastrowid
         cursor.close()
         conn.close()
-        return f"成功添加商品：{name}，ID为{product_id}"
+        return f"成功添加商品：名称：{name}，价格：{price}，库存：{stock}"
     except Exception as e:
         return f"添加失败：{str(e)}"
 
@@ -142,7 +140,7 @@ def query_products(
             return "没有找到匹配的商品"
         lines = ["查询结果："]
         for row in results:
-            lines.append(f"ID: {row['id']}, 名称: {row['name']}, 价格: {row['price']}, 库存: {row['stock']}")
+            lines.append(f"名称：{row['name']}，价格：{row['price']}，库存：{row['stock']}")
         return "\n".join(lines)
     except Exception as e:
         return f"查询失败：{str(e)}"
@@ -168,15 +166,15 @@ def add_products(products: list) -> str:
                 "INSERT INTO products (name, price, stock) VALUES (%s, %s, %s)",
                 (name, float(price), int(stock))
             )
-            added.append((name, cursor.lastrowid))
+            added.append((name, float(price), int(stock)))
         conn.commit()
         cursor.close()
         conn.close()
         if not added:
             return "没有成功添加任何商品（请检查每项是否包含 name、price、stock）"
         lines = [f"成功批量添加 {len(added)} 个商品："]
-        for name, pid in added:
-            lines.append(f"  - {name}，ID为{pid}")
+        for name, price, stock in added:
+            lines.append(f"  名称：{name}，价格：{price}，库存：{stock}")
         return "\n".join(lines)
     except Exception as e:
         return f"批量添加失败：{str(e)}"

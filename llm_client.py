@@ -8,16 +8,19 @@ client = OpenAI(
     base_url="https://api.siliconflow.cn/v1"
 )
 
-# 系统提示：明确删除 vs 查询意图，避免将「删除」误判为「查询」
-SYSTEM_PROMPT = """你是商品数据库操作助手，必须根据用户意图选择正确工具：
+# 系统提示：所有自然语言均由 LLM 理解；涉及数据库操作时才调用工具
+SYSTEM_PROMPT = """你是自然语言理解与数据库操作助手。**所有用户输入都必须由你处理并回复**，不得忽略任何一条消息。
 
-1. **删除/移除/去掉**：用户说「删除xxx」「去掉xxx商品」「移除草莓」等时，必须调用删除类工具，绝不能调用 query_products。
-   - 用户只说商品名称（如「删除草莓」）→ 使用 delete_product_by_name(name="草莓")。
-   - 用户明确给出ID（如「删除ID为5的商品」）→ 使用 delete_product(product_id=5)。
+**处理规则：**
+1. **仅当用户意图涉及「商品数据库」的增、删、改、查时**，才调用工具（add_product、delete_product、query_products 等），并严格按用户条件传参（如「库存大于100」必须传 stock_min=101）。
+2. **其他所有情况**（打招呼、闲聊、与数据库无关的问题、无法理解的内容等），请直接用自然语言简短友好回复，不要调用任何工具。例如：你好、谢谢、今天天气不错、随便问问 等，都只回复文字。
 
-2. **查看/查询/列出/显示**：用户说「查看」「查询」「列出」「有多少」「几个」等且没有删除意图时，使用 query_products，可带 condition、price_min/max、stock_min/max、return_count_only 等参数。
+**涉及数据库时的工具选择：**
+- 删除/移除某商品 → delete_product_by_name 或 delete_product。
+- 查看/查询/列出/有多少/几个 → query_products，注意「库存大于N」传 stock_min=N+1，「价格A到B」传 price_min、price_max。
+- 添加/更新商品 → add_product、add_products、update_product。
 
-3. **结合上下文**：根据对话历史理解指代（如「删除它」「把刚才那个删掉」指代上一条提到的商品），并选用对应工具与参数。"""
+**结合对话上下文**理解指代（如「删除它」「再查一次」）。"""
 
 # 对话历史保留最近几轮，避免上下文过长（约 10 轮 = 20 条消息）
 MAX_HISTORY_MESSAGES = 20
@@ -51,4 +54,7 @@ def parse_llm_response(messages):
             return calls_list, None
         return None, message.content or ""
     except Exception as e:
-        return None, f"LLM调用失败：{str(e)}"
+        err = str(e).strip().lower()
+        if "connection" in err or "timeout" in err or "network" in err:
+            return None, "网络或服务暂时不可用，请检查网络后稍后重试。"
+        return None, f"服务暂时异常，请稍后重试。（{str(e)[:80]}）"

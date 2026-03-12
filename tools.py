@@ -110,15 +110,15 @@ tools = [
         "type": "function",
         "function": {
             "name": "query_products",
-            "description": "仅用于「查看、查询、列出、显示、有多少、几个」等只读意图，不修改数据。不要用于用户明确要求「删除、移除、去掉」某商品的情况（那种情况必须用 delete_product_by_name 或 delete_product）。支持：按名称模糊(condition)、价格区间(price_min,price_max)、库存区间(stock_min,stock_max)；问数量时设 return_count_only=true 并填筛选条件。",
+            "description": "仅用于「查看、查询、列出、显示、有多少、几个」等只读意图。必须按用户条件传参：库存大于100→stock_min=101；库存不少于50→stock_min=50；价格2到8元→price_min=2,price_max=8。按名称用 condition。问数量时设 return_count_only=true。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "condition": {"type": "string", "description": "商品名称关键词，模糊匹配（可选）"},
                     "price_min": {"type": "number", "description": "最低价格（可选），如“2元以上”则填2"},
                     "price_max": {"type": "number", "description": "最高价格（可选），如“8元以下”则填8"},
-                    "stock_min": {"type": "integer", "description": "最低库存（可选）"},
-                    "stock_max": {"type": "integer", "description": "最高库存（可选）"},
+                    "stock_min": {"type": "integer", "description": "最低库存（可选）。用户说「库存大于N」时必填 N+1，如库存大于100则填 101；说「不少于N」时填 N。不填则不会按库存筛选。"},
+                    "stock_max": {"type": "integer", "description": "最高库存（可选）。用户说「库存小于N」时填 N-1；「不超过N」时填 N。"},
                     "return_count_only": {"type": "boolean", "description": "是否只返回数量不列明细。用户问“有几个”“有多少”“共多少”时设为 true"}
                 },
                 "required": []
