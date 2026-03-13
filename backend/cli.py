@@ -1,12 +1,15 @@
-from llm_client import parse_llm_response
-from db_connection import init_database
-import db_operations as db_ops
-from auth import verify_password
+"""命令行入口：自然语言数据库问答（需验证密码的操作用 getpass 输入密码）
+运行方式（在项目根目录）：python -m backend.cli
+"""
+import getpass
 
-# 定义哪些操作需要密码验证
+from .llm_client import parse_llm_response
+from .models import init_database
+from . import db_orm as db_ops
+from .auth import verify_password
+
 SENSITIVE_OPS = {"add_product", "add_products", "delete_product", "delete_products", "delete_product_by_name", "update_product"}
 
-# 函数名到实际函数的映射
 function_map = {
     "add_product": db_ops.add_product,
     "add_products": db_ops.add_products,
@@ -31,10 +34,7 @@ def main():
     print("  - 将商品ID2的价格改为6.8元")
     print("=" * 50)
 
-    # 确保数据库已初始化
     init_database()
-
-    # 对话历史，用于 LLM 上下文理解（仅保留 user / assistant 文本摘要）
     conversation = []
 
     while True:
@@ -45,12 +45,10 @@ def main():
         if not user_input:
             continue
 
-        # 将本轮用户输入加入历史后调用 LLM（带完整上下文）
         conversation.append({"role": "user", "content": user_input})
         calls_list, text_content = parse_llm_response(conversation)
 
         if calls_list is None:
-            # LLM 未调用工具，输出文本回复
             print("\n" + "=" * 50)
             print("AI回复：")
             print(text_content)
@@ -58,9 +56,12 @@ def main():
             conversation.append({"role": "assistant", "content": text_content})
         else:
             need_password = any(fn in SENSITIVE_OPS for fn, _ in calls_list)
-            if need_password and not verify_password():
-                conversation.pop()  # 本轮未执行，去掉刚加的用户消息
-                continue
+            if need_password:
+                pwd = getpass.getpass("请输入数据库密码以执行此操作：")
+                if not verify_password(pwd):
+                    print("密码错误，操作取消。")
+                    conversation.pop()
+                    continue
             results = []
             for func_name, args in calls_list:
                 print(f"识别到操作：{func_name}，参数：{args}")
@@ -77,7 +78,6 @@ def main():
             for r in results:
                 print(r)
             print("=" * 50)
-            # 将本轮执行结果摘要加入历史，便于下一轮上下文理解（如「删除它」）
             summary = "；".join(results)
             conversation.append({"role": "assistant", "content": f"已执行：{summary}"})
 

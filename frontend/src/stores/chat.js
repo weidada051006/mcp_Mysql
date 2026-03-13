@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { parseMessage, executeWithPassword } from '../api'
+import axios from 'axios'
+import { parseMessage, executeWithPassword, checkHealth } from '../api'
 
 const STORAGE_KEY = 'nlp2mysql_sessions'
 
@@ -22,13 +23,13 @@ function saveSessions(sessions) {
 
 export const useChatStore = defineStore('chat', {
   state: () => ({
-    // 历史会话列表 { id, title, messages, createdAt }
     sessions: loadSessions(),
-    // 当前会话 id，null 表示“新对话”
     currentSessionId: null,
     messages: [],
     loading: false,
     error: null,
+    /** 后端是否可达（健康检查结果），null 表示未检查 */
+    backendAvailable: null,
     passwordModal: {
       visible: false,
       sessionId: null,
@@ -79,6 +80,18 @@ export const useChatStore = defineStore('chat', {
     },
     setError(e) {
       this.error = e
+    },
+
+    /** 检查后端是否可用（页面加载或用户重试时调用） */
+    async checkBackend() {
+      try {
+        await checkHealth()
+        this.backendAvailable = true
+        return true
+      } catch (_) {
+        this.backendAvailable = false
+        return false
+      }
     },
 
     openPasswordModal(sessionId, operation, args) {
@@ -174,7 +187,14 @@ export const useChatStore = defineStore('chat', {
           this._saveToCurrentSession()
         }
       } catch (err) {
-        const msg = err.response?.data?.message || err.message || '网络错误'
+        const isTimeout = err.code === 'ECONNABORTED' || (err.message && err.message.includes('timeout'))
+        const isNetwork = err.message === 'Network Error' || err.code === 'ERR_NETWORK'
+        let msg
+        if (isTimeout || isNetwork) {
+          msg = '请求超时或无法连接后端。请确认：(1) 已在项目根目录启动后端：uvicorn backend.main:app --reload --port 8000  (2) 若已启动，可能是 LLM 响应较慢，请稍后重试。'
+        } else {
+          msg = err.response?.data?.message || err.response?.data?.detail || err.message || '网络错误'
+        }
         this.addAssistantMessage(`错误：${msg}`)
         this.setError(msg)
         this._saveToCurrentSession()

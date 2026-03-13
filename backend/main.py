@@ -1,29 +1,20 @@
 """
-FastAPI 后端：自然语言数据库问答 API（复用项目根目录的 config、db、llm、auth）
-运行方式：在项目根目录执行  uvicorn backend.main:app --reload --port 8000
+FastAPI 后端：自然语言数据库问答 API
+运行方式（在项目根目录）：uvicorn backend.main:app --reload --port 8000
 """
-from __future__ import annotations
-import sys
-from pathlib import Path
-
-# 将项目根目录加入路径，以便复用根目录的模块
-_root = Path(__file__).resolve().parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
-
 import uuid
-import time
-from typing import List, Dict, Any, Optional
-from fastapi import FastAPI
+from typing import Optional, Dict, List, Any
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from db_connection import init_database
-import db_operations as db_ops
-from llm_client import parse_llm_response
-from auth import verify_password_input as verify_password
+from .llm_client import parse_llm_response
+from . import db_orm as db_ops
+from .auth import verify_password
+from .models import init_database
 
-app = FastAPI(title="NL2SQL API", version="1.0")
+app = FastAPI(title="自然语言数据库问答系统API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,25 +24,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SESSIONS = {}
-SESSION_TTL = 300
-SENSITIVE_OPS = {"add_product", "add_products", "delete_product", "delete_products", "delete_product_by_name", "update_product"}
-FUNCTION_MAP = {
-    "add_product": db_ops.add_product,
-    "add_products": db_ops.add_products,
-    "delete_product": db_ops.delete_product,
-    "delete_products": db_ops.delete_products,
-    "delete_product_by_name": db_ops.delete_product_by_name,
-    "update_product": db_ops.update_product,
-    "query_products": db_ops.query_products,
+sessions: Dict[str, dict] = {}
+
+SENSITIVE_OPS = {
+    "add_product",
+    "delete_product",
+    "delete_product_by_name",
+    "update_product",
+    "add_products",
+    "delete_products",
 }
-
-
-def _clean_expired_sessions():
-    now = time.time()
-    expired = [sid for sid, data in SESSIONS.items() if now - data["created_at"] > SESSION_TTL]
-    for sid in expired:
-        del SESSIONS[sid]
 
 
 class ParseRequest(BaseModel):
@@ -59,9 +41,23 @@ class ParseRequest(BaseModel):
     history: Optional[List[Dict[str, Any]]] = None
 
 
+class ParseResponse(BaseModel):
+    status: str
+    result: Optional[str] = None
+    operation: Optional[str] = None
+    arguments: Optional[dict] = None
+    session_id: Optional[str] = None
+
+
 class ExecuteRequest(BaseModel):
     session_id: str
     password: str
+
+
+class ExecuteResponse(BaseModel):
+    status: str
+    result: Optional[str] = None
+    message: Optional[str] = None
 
 
 @app.on_event("startup")
@@ -69,51 +65,70 @@ def startup():
     init_database()
 
 
-@app.post("/api/parse")
-def api_parse(req: ParseRequest):
-    _clean_expired_sessions()
-    messages = list(req.history or [])
-    messages.append({"role": "user", "content": req.message.strip()})
-    calls_list, text_content = parse_llm_response(messages)
+@app.post("/api/parse", response_model=ParseResponse)
+async def parse_message(req: ParseRequest):
+    """解析用户自然语言指令"""
+    try:
+        messages = list(req.history or [])
+        messages.append({"role": "user", "content": req.message.strip()})
+        calls_list, text_content = parse_llm_response(messages)
+    except Exception as e:
+        return ParseResponse(status="error", result=f"解析失败：{str(e)}")
+
     if calls_list is None:
-        return {"status": "direct_result", "result": text_content}
+        return ParseResponse(status="direct_result", result=text_content or "")
+
     need_pw_calls = [(fn, args) for fn, args in calls_list if fn in SENSITIVE_OPS]
     if need_pw_calls:
-        fn, args = need_pw_calls[0]
+        func_name, result_or_args = need_pw_calls[0]
         session_id = str(uuid.uuid4())
-        SESSIONS[session_id] = {"operation": fn, "arguments": args, "created_at": time.time()}
-        return {"status": "need_password", "operation": fn, "arguments": args, "session_id": session_id}
+        sessions[session_id] = {"operation": func_name, "arguments": result_or_args}
+        return ParseResponse(
+            status="need_password",
+            operation=func_name,
+            arguments=result_or_args,
+            session_id=session_id,
+        )
+
     results = []
-    for fn, args in calls_list:
-        if fn in FUNCTION_MAP:
-            try:
-                results.append(FUNCTION_MAP[fn](**args))
-            except Exception as e:
-                results.append(f"执行 {fn} 出错：{str(e)}")
-        else:
-            results.append(f"未知函数：{fn}")
-    return {"status": "direct_result", "result": "\n".join(results)}
+    for func_name, result_or_args in calls_list:
+        try:
+            func = getattr(db_ops, func_name, None)
+            if func is None:
+                results.append(f"未知函数：{func_name}")
+            else:
+                results.append(func(**result_or_args))
+        except Exception as e:
+            results.append(f"执行失败：{str(e)}")
+    return ParseResponse(status="direct_result", result="\n".join(results))
 
 
-@app.post("/api/execute")
-def api_execute(req: ExecuteRequest):
-    _clean_expired_sessions()
-    sid = req.session_id
-    if sid not in SESSIONS:
-        return {"status": "error", "message": "会话无效或已过期"}
+@app.post("/api/execute", response_model=ExecuteResponse)
+async def execute_with_password(req: ExecuteRequest):
+    """执行需要密码验证的操作"""
+    session = sessions.get(req.session_id)
+    if not session:
+        raise HTTPException(status_code=400, detail="会话无效或已过期")
+
     if not verify_password(req.password):
-        return {"status": "error", "message": "密码错误"}
-    data = SESSIONS.pop(sid)
-    fn, args = data["operation"], data["arguments"]
-    if fn not in FUNCTION_MAP:
-        return {"status": "error", "message": "未知操作"}
+        return ExecuteResponse(status="error", message="密码错误")
+
+    func_name = session["operation"]
+    args = session["arguments"]
     try:
-        result = FUNCTION_MAP[fn](**args)
-        return {"status": "success", "result": result}
+        func = getattr(db_ops, func_name)
+        result = func(**args)
+        del sessions[req.session_id]
+        return ExecuteResponse(status="success", result=result)
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return ExecuteResponse(status="error", message=f"执行失败：{str(e)}")
+
+
+@app.get("/")
+async def root():
+    return {"message": "自然语言数据库问答系统API，请访问 /docs 查看文档"}
 
 
 @app.get("/api/health")
-def health():
+async def health():
     return {"status": "ok"}

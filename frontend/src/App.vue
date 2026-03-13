@@ -1,16 +1,32 @@
 <template>
-  <div class="flex h-screen max-h-screen bg-[#f5f5f7]">
-    <!-- 左侧历史会话 -->
-    <SessionSidebar
-      :sessions="chat.sortedSessions"
-      :current-session-id="chat.currentSessionId"
-      @new-session="chat.startNewSession()"
-      @select="chat.selectSession($event)"
-      @delete="chat.deleteSession($event)"
-    />
+  <div class="flex flex-col h-screen max-h-screen bg-[#f5f5f7]">
+    <!-- 后端未连接时顶部提示（整行） -->
+    <div
+      v-if="chat.backendAvailable === false"
+      class="flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm"
+    >
+      <span>无法连接后端服务。请先在项目根目录执行：<code class="px-1.5 py-0.5 bg-amber-100 rounded">uvicorn backend.main:app --reload --port 8000</code></span>
+      <button
+        type="button"
+        class="flex-shrink-0 ml-2 px-3 py-1 rounded bg-amber-200 hover:bg-amber-300 text-amber-900"
+        @click="chat.checkBackend()"
+      >
+        重试
+      </button>
+    </div>
 
-    <!-- 右侧：顶栏 + 对话 + 输入 -->
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex flex-1 min-h-0">
+      <!-- 左侧历史会话 -->
+      <SessionSidebar
+        :sessions="chat.sortedSessions"
+        :current-session-id="chat.currentSessionId"
+        @new-session="chat.startNewSession()"
+        @select="chat.selectSession($event)"
+        @delete="chat.deleteSession($event)"
+      />
+
+      <!-- 右侧：顶栏 + 对话 + 输入 -->
+      <div class="flex-1 flex flex-col min-w-0">
       <header class="flex-shrink-0 flex items-center justify-between h-14 px-6 bg-white/90 backdrop-blur border-b border-gray-100">
         <h1 class="text-lg font-semibold text-[#1d1d1f]">
           NL2SQL · 自然语言数据库问答
@@ -42,6 +58,7 @@
         :disabled="chat.loading"
         @send="chat.sendMessage"
       />
+      </div>
     </div>
 
     <PasswordModal
@@ -66,6 +83,7 @@ const messagesEndRef = ref(null)
 
 onMounted(() => {
   chat.startNewSession()
+  chat.checkBackend()
 })
 
 watch(
