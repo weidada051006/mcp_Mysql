@@ -132,8 +132,10 @@ def query_products(
     stock_min: int = None,
     stock_max: int = None,
     return_count_only: bool = False,
+    limit: Optional[int] = None,
+    last_n: Optional[int] = None,
 ) -> str:
-    """查询商品（多条件组合，可选仅返回数量）"""
+    """查询商品。数据格式仅含名称、价格、库存。前/后几条按入库顺序（id 序）。limit=前几条，last_n=后几条。"""
     with session_scope() as session:
         try:
             query = session.query(Product)
@@ -152,7 +154,16 @@ def query_products(
                 count = query.count()
                 return f"符合条件的商品共 {count} 个。"
 
-            products = query.all()
+            # 按入库顺序（id 即插入顺序）：前几条=id 升序，后几条=id 降序取 n 再反转为先进入的在前
+            if last_n is not None and last_n > 0:
+                products = query.order_by(Product.id.desc()).limit(last_n).all()
+                products = list(reversed(products))
+            else:
+                query = query.order_by(Product.id)
+                if limit is not None and limit > 0:
+                    query = query.limit(limit)
+                products = query.all()
+
             if not products:
                 return "没有找到匹配的商品"
             lines = ["查询结果："]
@@ -213,8 +224,61 @@ def delete_products(product_ids: List[int]) -> str:
                 .delete(synchronize_session=False)
             )
             session.commit()
-            return f"成功删除 {deleted} 个商品（ID: {product_ids}）。"
+            if deleted == 0:
+                return "未找到指定商品，实际删除 0 个。"
+            return f"成功删除 {deleted} 个商品。"
         except SQLAlchemyError as e:
             session.rollback()
             logger.error("批量删除商品失败: %s", e, exc_info=True)
             return "批量删除失败"
+
+
+def delete_first_n_products(n: int) -> str:
+    """按入库顺序删除前 n 个商品（「删除前三个」等）。数据无 ID，仅按插入顺序。"""
+    if n is None or n < 1:
+        return "请指定大于 0 的删除数量。"
+    with session_scope() as session:
+        try:
+            ids = [
+                row[0]
+                for row in session.query(Product.id).order_by(Product.id).limit(n).all()
+            ]
+            if not ids:
+                return "当前没有商品，无需删除。"
+            deleted = (
+                session.query(Product)
+                .filter(Product.id.in_(ids))
+                .delete(synchronize_session=False)
+            )
+            session.commit()
+            return f"成功删除按入库顺序的前 {n} 个商品，共 {deleted} 条。"
+        except SQLAlchemyError as e:
+            session.rollback()
+            logger.error("按顺序删除前 N 个商品失败: %s", e, exc_info=True)
+            return "删除失败"
+
+
+def delete_last_n_products(n: int) -> str:
+    """按入库顺序删除后 n 个商品（「删除后三个」等）。数据无 ID，仅按插入顺序。"""
+    if n is None or n < 1:
+        return "请指定大于 0 的删除数量。"
+    with session_scope() as session:
+        try:
+            ids = [
+                row[0]
+                for row in
+                session.query(Product.id).order_by(Product.id.desc()).limit(n).all()
+            ]
+            if not ids:
+                return "当前没有商品，无需删除。"
+            deleted = (
+                session.query(Product)
+                .filter(Product.id.in_(ids))
+                .delete(synchronize_session=False)
+            )
+            session.commit()
+            return f"成功删除按入库顺序的后 {n} 个商品，共 {deleted} 条。"
+        except SQLAlchemyError as e:
+            session.rollback()
+            logger.error("按顺序删除后 N 个商品失败: %s", e, exc_info=True)
+            return "删除失败"

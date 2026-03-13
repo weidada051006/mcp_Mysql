@@ -8,7 +8,7 @@ from .models import init_database
 from . import db_orm as db_ops
 from .auth import verify_password
 
-SENSITIVE_OPS = {"add_product", "add_products", "delete_product", "delete_products", "delete_product_by_name", "update_product"}
+SENSITIVE_OPS = {"add_product", "add_products", "delete_product", "delete_products", "delete_product_by_name", "delete_first_n_products", "delete_last_n_products", "update_product"}
 
 function_map = {
     "add_product": db_ops.add_product,
@@ -16,6 +16,8 @@ function_map = {
     "delete_product": db_ops.delete_product,
     "delete_products": db_ops.delete_products,
     "delete_product_by_name": db_ops.delete_product_by_name,
+    "delete_first_n_products": db_ops.delete_first_n_products,
+    "delete_last_n_products": db_ops.delete_last_n_products,
     "update_product": db_ops.update_product,
     "query_products": db_ops.query_products,
 }

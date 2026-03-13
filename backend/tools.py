@@ -75,7 +75,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "delete_products",
-            "description": "批量根据ID删除多个商品，传入ID列表。仅当用户明确给出多个ID时使用。",
+            "description": "批量根据ID删除多个商品，传入ID列表。仅当用户明确给出多个具体ID时使用。若用户说「删除前/后三个」「按顺序去掉前几条」等，用 delete_first_n_products 或 delete_last_n_products。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -86,6 +86,34 @@ tools = [
                     }
                 },
                 "required": ["product_ids"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_first_n_products",
+            "description": "按入库顺序删除前 n 个商品。用户说「删除前三个」「去掉前两条」等用此工具，传入 n。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "n": {"type": "integer", "description": "要删除的前 n 个（按入库顺序）"}
+                },
+                "required": ["n"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_last_n_products",
+            "description": "按入库顺序删除后 n 个商品。用户说「删除后三个」「去掉最后两条」等用此工具，传入 n。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "n": {"type": "integer", "description": "要删除的后 n 个（按入库顺序）"}
+                },
+                "required": ["n"]
             }
         }
     },
@@ -110,16 +138,18 @@ tools = [
         "type": "function",
         "function": {
             "name": "query_products",
-            "description": "仅用于「查看、查询、列出、显示、有多少、几个」等只读意图。必须按用户条件传参：库存大于100→stock_min=101；库存不少于50→stock_min=50；价格2到8元→price_min=2,price_max=8。按名称用 condition。问数量时设 return_count_only=true。",
+            "description": "仅用于「查看、查询、列出、显示、有多少、几个」等只读意图。数据格式只有名称、价格、库存；前/后几条按入库顺序。库存大于100→stock_min=101；价格2到8元→price_min=2,price_max=8。按名称用 condition。问数量时设 return_count_only=true。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "condition": {"type": "string", "description": "商品名称关键词，模糊匹配（可选）"},
-                    "price_min": {"type": "number", "description": "最低价格（可选），如“2元以上”则填2"},
-                    "price_max": {"type": "number", "description": "最高价格（可选），如“8元以下”则填8"},
-                    "stock_min": {"type": "integer", "description": "最低库存（可选）。用户说「库存大于N」时必填 N+1，如库存大于100则填 101；说「不少于N」时填 N。不填则不会按库存筛选。"},
-                    "stock_max": {"type": "integer", "description": "最高库存（可选）。用户说「库存小于N」时填 N-1；「不超过N」时填 N。"},
-                    "return_count_only": {"type": "boolean", "description": "是否只返回数量不列明细。用户问“有几个”“有多少”“共多少”时设为 true"}
+                    "price_min": {"type": "number", "description": "最低价格（可选）"},
+                    "price_max": {"type": "number", "description": "最高价格（可选）"},
+                    "stock_min": {"type": "integer", "description": "最低库存（可选）。库存大于N→stock_min=N+1。"},
+                    "stock_max": {"type": "integer", "description": "最高库存（可选）"},
+                    "return_count_only": {"type": "boolean", "description": "是否只返回数量不列明细。"},
+                    "limit": {"type": "integer", "description": "前几条（按入库顺序）。用户说「前三个」「列出前5条」时填 3、5。"},
+                    "last_n": {"type": "integer", "description": "后几条（按入库顺序）。用户说「后三个」「最后5条」时填 3、5。"}
                 },
                 "required": []
             }

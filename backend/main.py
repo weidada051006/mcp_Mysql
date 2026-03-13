@@ -33,6 +33,8 @@ SENSITIVE_OPS = {
     "update_product",
     "add_products",
     "delete_products",
+    "delete_first_n_products",
+    "delete_last_n_products",
 }
 
 
