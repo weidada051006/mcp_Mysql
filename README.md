@@ -27,7 +27,7 @@ nlp2mysql/
     └── ...
 ```
 
-## 环境准备
+## 环境
 
 1. 在项目根目录创建并激活虚拟环境，安装依赖：
    ```bash
@@ -40,9 +40,9 @@ nlp2mysql/
    - `SILICONFLOW_API_KEY=你的硅基流动 API Key`
 3. 确保 MySQL 已安装并启动，且 root 可连接。
 
-## 如何运行
+## 运行
 
-**重要：** 使用前端页面前必须先启动后端，否则会出现「打不开 http://localhost:8000/docs」或前端「请求超时」。前端会检测后端是否可用，若未连接会显示黄色提示条。
+前端会检测后端是否可用，若未连接会显示黄色提示条。
 
 - **后端 API**（在项目根目录、先执行并保持运行）：
   ```bash
@@ -62,7 +62,7 @@ nlp2mysql/
   ```
   前端默认 `http://localhost:5173`，会通过 Vite 代理将 `/api` 转发到 `http://127.0.0.1:8000`。
 
-## 如何测试
+## 测试
 
 ### 1. 检查数据库与后端
 
@@ -84,15 +84,14 @@ venv\Scripts\activate
 uvicorn backend.main:app --reload --port 8000
 ```
 
-看到 `Uvicorn running on http://127.0.0.1:8000` 后，再在浏览器打开 **http://localhost:8000/docs** 或 **http://127.0.0.1:8000/docs**，用 Swagger 测试：
+在浏览器打开 **http://localhost:8000/docs** 或 **http://127.0.0.1:8000/docs**，用 Swagger 测试：
   - `POST /api/parse`：body 填 `{"message": "查询所有商品", "history": []}`，应返回 `status: "direct_result"` 及查询结果。
   - 若发「添加商品xxx」会返回 `status: "need_password"` 和 `session_id`，再用 `POST /api/execute` 传该 `session_id` 和 `.env` 中的密码，应返回 `status: "success"`。
 - 或访问 **http://localhost:8000/api/health**，应返回 `{"status":"ok"}`。
 
 ### 3. 测试命令行版
 
-新开一个终端，在项目根目录：
-
+在项目根目录：
 ```bash
 venv\Scripts\activate
 python -m backend.cli
@@ -102,7 +101,7 @@ python -m backend.cli
 
 ### 4. 前后端联调
 
-1. **先**在项目根目录启动后端（保持运行）：`uvicorn backend.main:app --reload --port 8000`
-2. **再**新开终端启动前端：`cd frontend` → `npm run dev`
+1. 启动后端（保持运行）：`uvicorn backend.main:app --reload --port 8000`
+2. 新开终端启动前端：`cd frontend` → `npm run dev`
 3. 浏览器打开 **http://localhost:5173**。若顶部出现黄色提示「无法连接后端服务」，说明后端未启动或未在 8000 端口运行，请先完成步骤 1 后点击「重试」。
 4. 在聊天框输入自然语言（如「有多少个商品」「添加商品西瓜 3 元 50 库存」），确认返回与密码弹窗行为符合预期。若出现「请求超时」，多为后端未启动或 LLM 响应较慢，可先访问 http://localhost:8000/api/health 确认后端是否正常。
